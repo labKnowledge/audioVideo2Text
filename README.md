@@ -1,4 +1,4 @@
-# Audio/Video to Text Transcription App
+# AudioVideo2Text Transcription App
 
 This application provides a user-friendly GUI for transcribing audio and video files to text using OpenAI's Whisper model. It supports various audio and video formats and includes features like file selection, progress tracking, and text editing.
 
@@ -24,7 +24,7 @@ Follow these steps to set up the Audio/Video to Text Transcription App:
 
 1. Clone the repository:
    ```
-   git clone https://github.com/yourusername/audio-video2text.git
+   git clone https://github.com/labKnowledge/audioVideo2Text.git
    cd audio-video2text
    ```
 
