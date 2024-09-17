@@ -1,19 +1,18 @@
+
 import sys
 import os
-from PyQt5.QtWidgets import QApplication, QWidget, QPushButton, QVBoxLayout, QLabel, QFileDialog, QTextEdit, QProgressBar, QHBoxLayout, QMainWindow, QAction
-from PyQt5.QtCore import QThread, pyqtSignal
-from PyQt5.QtGui import QIcon, QTextDocument
+from PyQt6.QtWidgets import (QApplication, QWidget, QPushButton, QVBoxLayout, QLabel, 
+                             QFileDialog, QTextEdit, QProgressBar, QHBoxLayout, QMainWindow, 
+                            QStackedWidget, QStyle, QStyleFactory)
+from PyQt6.QtCore import Qt, QThread, pyqtSignal, QSettings, QRectF
+from PyQt6.QtGui import QPainter, QIcon, QTextDocument, QPalette, QColor, QAction, QBrush, QPen, QFont
 import moviepy.editor as mp
 import ssl
 import whisper
-import urllib
 import time
 import re
-# Specify NumPy version
-import numpy
-if numpy.__version__.startswith('2.'):
-    print("Warning: NumPy 2.x detected. Some modules may not be compatible.")
-    print("Consider downgrading to NumPy 1.x or upgrading affected modules.")
+
+# Existing TranscriptionThread class remains unchanged
 
 class TranscriptionThread(QThread):
     finished = pyqtSignal(str)
@@ -93,114 +92,265 @@ class TranscriptionThread(QThread):
         except Exception as e:
             self.error.emit(f"Error: {str(e)}")
 
+
+class ModernButton(QPushButton):
+    def __init__(self, text, parent=None):
+        super().__init__(text, parent)
+        self.setStyleSheet("""
+            QPushButton {
+                background-color: #4CAF50;
+                border: none;
+                color: white;
+                padding: 10px 20px;
+                text-align: center;
+                text-decoration: none;
+                font-size: 16px;
+                margin: 4px 2px;
+                border-radius: 8px;
+            }
+            QPushButton:hover {
+                background-color: #45a049;
+            }
+            QPushButton:pressed {
+                background-color: #3e8e41;
+            }
+        """)
+
+
+class CircularProgressBar(QWidget):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setFixedSize(100, 100)
+        self.value = 0
+
+    def setValue(self, value):
+        self.value = value
+        self.update()
+
+    def paintEvent(self, event):
+        width = self.width() - 1
+        height = self.height() - 1
+        margin = 10
+        value = int(self.value * 360 / 100)  # Convert to integer
+
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        painter.translate(width / 2, height / 2)
+        painter.scale(width / 200.0, height / 200.0)
+
+        painter.setPen(Qt.PenStyle.NoPen)
+        painter.setBrush(QBrush(QColor(33, 150, 243)))
+
+        painter.drawPie(QRectF(-90, -90, 180, 180), 90 * 16, -value * 16)
+        painter.setBrush(QBrush(QColor(255, 255, 255)))
+        painter.drawEllipse(-60, -60, 120, 120)
+
+        painter.setPen(QPen(QColor(33, 150, 243)))
+        painter.setFont(QFont('Arial', 30))
+        painter.drawText(QRectF(-50, -50, 100, 100), Qt.AlignmentFlag.AlignCenter, f"{int(self.value)}%")
+
+
+
+
 class TextEditor(QMainWindow):
     def __init__(self):
         super().__init__()
+        self.initUI()
 
-        # Initialize the main window
-        self.setWindowTitle("Audio/Video Transcription App")
-        self.setGeometry(100, 100, 800, 600)
+    def initUI(self):
+        self.setWindowTitle("Modern Audio/Video Transcription App")
+        self.setGeometry(100, 100, 1000, 700)
 
-        # Create a central widget and layout
+        # Create a central widget and main layout
         central_widget = QWidget()
         self.setCentralWidget(central_widget)
-        layout = QVBoxLayout(central_widget)
+        main_layout = QVBoxLayout(central_widget)
 
-        # Add transcription-specific widgets
-        self.label = QLabel('Select an audio or video file to transcribe')
-        layout.addWidget(self.label)
+        # Create a stacked widget for different "pages"
+        self.stacked_widget = QStackedWidget()
+        main_layout.addWidget(self.stacked_widget)
 
-        button_layout = QHBoxLayout()
-        self.select_btn = QPushButton('Select File')
-        self.select_btn.clicked.connect(self.selectFile)
-        button_layout.addWidget(self.select_btn)
+        # Create and add the home page
+        home_page = self.create_home_page()
+        self.stacked_widget.addWidget(home_page)
 
-        layout.addLayout(button_layout)
+        # Create and add the transcription page
+        transcription_page = self.create_transcription_page()
+        self.stacked_widget.addWidget(transcription_page)
 
-        self.progressBar = QProgressBar()
-        self.progressBar.setMaximum(100)
-        layout.addWidget(self.progressBar)
+        # Set up the menu bar
+        self.create_menu_bar()
 
-        # Create a QTextEdit widget
+        # Set the initial theme
+        self.set_theme("Light")
+
+    def create_home_page(self):
+        home_widget = QWidget()
+        layout = QVBoxLayout(home_widget)
+
+        welcome_label = QLabel("Welcome to the Audio/Video Transcription App")
+        welcome_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        welcome_label.setStyleSheet("font-size: 24px; margin: 20px;")
+        layout.addWidget(welcome_label)
+
+        start_button = ModernButton("Start New Transcription")
+        start_button.clicked.connect(self.start_transcription)
+        layout.addWidget(start_button, alignment=Qt.AlignmentFlag.AlignCenter)
+
+        return home_widget
+
+    def create_transcription_page(self):
+        transcription_widget = QWidget()
+        layout = QVBoxLayout(transcription_widget)
+
+        self.file_label = QLabel('Select an audio or video file to transcribe')
+        self.file_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        layout.addWidget(self.file_label)
+
+        select_button = ModernButton('Select File')
+        select_button.clicked.connect(self.selectFile)
+        layout.addWidget(select_button, alignment=Qt.AlignmentFlag.AlignCenter)
+
+        self.progress_bar = CircularProgressBar()
+        layout.addWidget(self.progress_bar, alignment=Qt.AlignmentFlag.AlignCenter)
+
         self.text_edit = QTextEdit()
+        self.text_edit.setStyleSheet("""
+            QTextEdit {
+                border: 1px solid #ccc;
+                border-radius: 4px;
+                padding: 8px;
+                font-size: 14px;
+            }
+        """)
         layout.addWidget(self.text_edit)
 
-        # Create a menu bar
-        self.menu_bar = self.menuBar()
+        return transcription_widget
 
-        # Create File menu
-        file_menu = self.menu_bar.addMenu("&File")
+    def create_menu_bar(self):
+        menu_bar = self.menuBar()
 
-        # Create actions
-        new_action = QAction(QIcon(None), "&New", self)
+        # File menu
+        file_menu = menu_bar.addMenu("&File")
+        
+        new_action = QAction(QIcon(self.style().standardIcon(QStyle.StandardPixmap.SP_FileIcon)), "&New", self)
         new_action.setShortcut("Ctrl+N")
         new_action.triggered.connect(self.new_file)
+        file_menu.addAction(new_action)
         
-        open_action = QAction(QIcon(None), "&Open", self)
+        open_action = QAction(QIcon(self.style().standardIcon(QStyle.StandardPixmap.SP_DialogOpenButton)), "&Open", self)
         open_action.setShortcut("Ctrl+O")
         open_action.triggered.connect(self.open_file)
+        file_menu.addAction(open_action)
         
-        save_action = QAction(QIcon(None), "&Save", self)
+        save_action = QAction(QIcon(self.style().standardIcon(QStyle.StandardPixmap.SP_DialogSaveButton)), "&Save", self)
         save_action.setShortcut("Ctrl+S")
         save_action.triggered.connect(self.save_file)
+        file_menu.addAction(save_action)
         
-        exit_action = QAction(QIcon(None), "&Exit", self)
+        file_menu.addSeparator()
+        
+        exit_action = QAction(QIcon(self.style().standardIcon(QStyle.StandardPixmap.SP_DialogCloseButton)), "&Exit", self)
         exit_action.setShortcut("Ctrl+Q")
         exit_action.triggered.connect(self.close)
-
-        # Add actions to File menu
-        file_menu.addAction(new_action)
-        file_menu.addAction(open_action)
-        file_menu.addAction(save_action)
-        file_menu.addSeparator()
         file_menu.addAction(exit_action)
 
-    def new_file(self):
-        # Clear the text edit area
-        self.text_edit.clear()
+        # Theme menu
+        theme_menu = menu_bar.addMenu("&Theme")
         
+        light_theme_action = QAction("&Light", self)
+        light_theme_action.triggered.connect(lambda: self.set_theme("Light"))
+        theme_menu.addAction(light_theme_action)
+        
+        dark_theme_action = QAction("&Dark", self)
+        dark_theme_action.triggered.connect(lambda: self.set_theme("Dark"))
+        theme_menu.addAction(dark_theme_action)
+
+    def set_theme(self, theme):
+        if theme == "Light":
+            QApplication.setStyle(QStyleFactory.create("Fusion"))
+            palette = QPalette()
+            palette.setColor(QPalette.ColorRole.Window, QColor(240, 240, 240))
+            palette.setColor(QPalette.ColorRole.WindowText, QColor(0, 0, 0))
+            palette.setColor(QPalette.ColorRole.Base, QColor(255, 255, 255))
+            palette.setColor(QPalette.ColorRole.AlternateBase, QColor(230, 230, 230))
+            palette.setColor(QPalette.ColorRole.ToolTipBase, QColor(255, 255, 220))
+            palette.setColor(QPalette.ColorRole.ToolTipText, QColor(0, 0, 0))
+            palette.setColor(QPalette.ColorRole.Text, QColor(0, 0, 0))
+            palette.setColor(QPalette.ColorRole.Button, QColor(240, 240, 240))
+            palette.setColor(QPalette.ColorRole.ButtonText, QColor(0, 0, 0))
+            palette.setColor(QPalette.ColorRole.BrightText, QColor(255, 0, 0))
+            palette.setColor(QPalette.ColorRole.Link, QColor(0, 0, 255))
+            palette.setColor(QPalette.ColorRole.Highlight, QColor(76, 163, 224))
+            palette.setColor(QPalette.ColorRole.HighlightedText, QColor(255, 255, 255))
+        else:  # Dark theme
+            QApplication.setStyle(QStyleFactory.create("Fusion"))
+            palette = QPalette()
+            palette.setColor(QPalette.ColorRole.Window, QColor(53, 53, 53))
+            palette.setColor(QPalette.ColorRole.WindowText, QColor(255, 255, 255))
+            palette.setColor(QPalette.ColorRole.Base, QColor(25, 25, 25))
+            palette.setColor(QPalette.ColorRole.AlternateBase, QColor(53, 53, 53))
+            palette.setColor(QPalette.ColorRole.ToolTipBase, QColor(255, 255, 255))
+            palette.setColor(QPalette.ColorRole.ToolTipText, QColor(255, 255, 255))
+            palette.setColor(QPalette.ColorRole.Text, QColor(255, 255, 255))
+            palette.setColor(QPalette.ColorRole.Button, QColor(53, 53, 53))
+            palette.setColor(QPalette.ColorRole.ButtonText, QColor(255, 255, 255))
+            palette.setColor(QPalette.ColorRole.BrightText, QColor(255, 0, 0))
+            palette.setColor(QPalette.ColorRole.Link, QColor(42, 130, 218))
+            palette.setColor(QPalette.ColorRole.Highlight, QColor(42, 130, 218))
+            palette.setColor(QPalette.ColorRole.HighlightedText, QColor(0, 0, 0))
+
+        QApplication.setPalette(palette)
+
+    def start_transcription(self):
+        self.stacked_widget.setCurrentIndex(1)  # Switch to transcription page
+
+    def selectFile(self):
+            fileName, _ = QFileDialog.getOpenFileName(
+                self,
+                "Select Audio or Video File",
+                "",
+                "Audio/Video Files (*.mp3 *.wav *.ogg *.flac *.mp4 *.avi *.mov);;All Files (*)"
+            )
+            if fileName:
+                self.file_label.setText(f"Processing: {os.path.basename(fileName)}")
+                self.transcriptionThread = TranscriptionThread(fileName)
+                self.transcriptionThread.finished.connect(self.updateTranscript)
+                self.transcriptionThread.error.connect(self.showError)
+                self.transcriptionThread.progress.connect(self.updateProgress)
+                self.transcriptionThread.start()
+
+    def updateTranscript(self, transcript):
+        self.text_edit.setHtml(transcript)
+        self.file_label.setText("Transcription complete")
+
+    def showError(self, error_message):
+        self.text_edit.setPlainText(error_message)
+        self.file_label.setText("Error occurred")
+
+    def updateProgress(self, value, message):
+        self.progress_bar.setValue(value)
+        self.file_label.setText(message)
+
+    def new_file(self):
+        self.text_edit.clear()
+        self.stacked_widget.setCurrentIndex(0)  # Return to home page
 
     def open_file(self):
-        # Open a file dialog and read the selected file
         file_name, _ = QFileDialog.getOpenFileName(self, "Open File", "", "Text Files (*.txt);;All Files (*)")
         if file_name:
             with open(file_name, 'r') as file:
                 self.text_edit.setText(file.read())
+            self.stacked_widget.setCurrentIndex(1)  # Switch to transcription page
 
     def save_file(self):
-        # Open a file dialog and save the file
         file_name, _ = QFileDialog.getSaveFileName(self, "Save File", "", "Text Files (*.txt);;All Files (*)")
         if file_name:
             with open(file_name, 'w') as file:
                 file.write(self.text_edit.toPlainText())
 
-    def selectFile(self):
-        options = QFileDialog.Options()
-        fileName, _ = QFileDialog.getOpenFileName(self, "Select Audio or Video File", "", 
-                                                  "Audio/Video Files (*.mp3 *.wav *.ogg *.flac *.mp4 *.avi *.mov);;All Files (*)", 
-                                                  options=options)
-        if fileName:
-            self.label.setText(f"Processing: {os.path.basename(fileName)}")
-            self.transcriptionThread = TranscriptionThread(fileName)
-            self.transcriptionThread.finished.connect(self.updateTranscript)
-            self.transcriptionThread.error.connect(self.showError)
-            self.transcriptionThread.progress.connect(self.updateProgress)
-            self.transcriptionThread.start()
-
-    def updateTranscript(self, transcript):
-        self.text_edit.setHtml(transcript)  # Use setHtml to preserve any formatting
-        self.label.setText("Transcription complete")
-
-    def showError(self, error_message):
-        self.text_edit.setPlainText(error_message)
-        self.label.setText("Error occurred")
-
-    def updateProgress(self, value, message):
-        self.progressBar.setValue(value)
-        self.label.setText(message)
-
 if __name__ == '__main__':
     app = QApplication(sys.argv)
     ex = TextEditor()
     ex.show()
-    sys.exit(app.exec_())
+    sys.exit(app.exec())
